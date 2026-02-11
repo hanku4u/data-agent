@@ -8,7 +8,6 @@ import pytest
 
 from data_agent.agent import AgentDeps
 from data_agent.tools.chart import ChartTool
-from data_agent.tools.fetch import FetchTool
 from data_agent.models import (
     AgentQueryResponse,
     ChartResult,

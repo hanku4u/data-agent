@@ -15,6 +15,9 @@ class TransformTool:
     # Whitelist of allowed aggregation functions
     ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "std"}
     
+    # Whitelist of allowed resample frequencies
+    ALLOWED_FREQ = {"H", "D", "W", "M", "Q", "Y"}
+    
     @staticmethod
     def _validate_agg_func(func: str) -> None:
         """Validate that an aggregation function is in the whitelist."""
@@ -69,6 +72,15 @@ class TransformTool:
             Resampled records.
         """
         self._validate_agg_func(agg_func)
+        
+        # Validate frequency parameter
+        if freq not in self.ALLOWED_FREQ:
+            allowed = ", ".join(sorted(self.ALLOWED_FREQ))
+            raise ValueError(
+                f"Invalid resample frequency: '{freq}'. "
+                f"Allowed frequencies: {allowed}"
+            )
+        
         df = pd.DataFrame(data)
         df[date_column] = pd.to_datetime(df[date_column])
         df = df.set_index(date_column)

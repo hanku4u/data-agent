@@ -1,4 +1,4 @@
-"""Source registry — extracted from FetchTool for reuse."""
+"""Source registry for managing data sources."""
 
 from __future__ import annotations
 
