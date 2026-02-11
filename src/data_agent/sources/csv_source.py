@@ -29,9 +29,9 @@ class CSVSource(DataSource):
         self._df_cache: Optional[pd.DataFrame] = None
     
     async def _load(self) -> pd.DataFrame:
-        """Load the file into a DataFrame with caching."""
+        """Load the file into a DataFrame with caching. Returns a copy."""
         if self._df_cache is not None:
-            return self._df_cache
+            return self._df_cache.copy()
         
         suffix = self.file_path.suffix.lower()
         
@@ -43,13 +43,12 @@ class CSVSource(DataSource):
                 delimiter=self.delimiter,
                 encoding=self.encoding,
                 parse_dates=self.parse_dates if self.parse_dates else True,
-                infer_datetime_format=True
             )
         else:
             raise ValueError(f"Unsupported file type: {suffix}")
         
         self._df_cache = df
-        return df
+        return df.copy()
     
     async def fetch(
         self,

@@ -5,7 +5,6 @@ from typing import List, Optional
 
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
 
 from ..models import ChartType, ChartResult
 
@@ -40,6 +39,9 @@ class ChartEngine:
         Returns:
             ChartResult with base64 image or HTML
         """
+        # Work on a copy to avoid mutating the input
+        df = df.copy()
+        
         # Auto-detect and parse datetime x-axis
         if x_column in df.columns:
             try:
