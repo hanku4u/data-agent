@@ -190,3 +190,30 @@ class TestAPIContracts:
 
             resp = client.get("/data-sources")
             assert "del_me" not in resp.json()
+    
+    @pytest.mark.asyncio
+    async def test_chart_filters_passed_to_registry(self, tmp_csv: Path):
+        """Test that filters are passed from chart creation to registry.fetch_data."""
+        from data_agent.registry import SourceRegistry
+        from data_agent.tools.chart import ChartTool
+        from data_agent.models import DataSourceConfig, DataSourceType
+        
+        reg = SourceRegistry()
+        cfg = DataSourceConfig(
+            name="chart_test",
+            type=DataSourceType.CSV,
+            config={"path": str(tmp_csv)},
+        )
+        reg.register(cfg)
+        
+        # Fetch with filters (simulating what the chart endpoint should do)
+        result = await reg.fetch_data(
+            source_name="chart_test",
+            filters={"category": "A"},
+        )
+        
+        # Should only return rows with category "A"
+        # sample_df has 3 "A" rows out of 5 total
+        assert result.row_count == 3
+        for record in result.data:
+            assert record["category"] == "A"

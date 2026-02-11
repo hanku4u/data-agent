@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 from pydantic_ai import Agent, RunContext
 
 from .config import LLMConfig, get_config
-from .tools.fetch import FetchTool
+from .registry import SourceRegistry
 from .tools.chart import ChartTool
 from .tools.transform import TransformTool
 from .models import DataResult, DataSchema, ChartResult, ChartType
@@ -17,7 +17,7 @@ from .models import DataResult, DataSchema, ChartResult, ChartType
 @dataclass
 class AgentDeps:
     """Dependencies injected into the agent at runtime."""
-    fetch_tool: FetchTool
+    registry: SourceRegistry
     chart_tool: ChartTool
     transform_tool: TransformTool = None
 
@@ -67,7 +67,7 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
     @agent.tool
     async def list_data_sources(ctx: RunContext[AgentDeps]) -> str:
         """List all available data sources."""
-        sources = ctx.deps.fetch_tool.list_sources()
+        sources = ctx.deps.registry.list()
         if not sources:
             return "No data sources registered. Ask the user to register one."
         return f"Available data sources: {', '.join(sources)}"
@@ -81,7 +81,7 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
             source_name: Name of the data source
         """
         try:
-            schema = await ctx.deps.fetch_tool.get_schema(source_name)
+            schema = await ctx.deps.registry.get_schema(source_name)
             lines = [f"Schema for '{source_name}' ({schema.row_count} rows):"]
             for col in schema.columns:
                 flags = []
@@ -114,7 +114,7 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
             order_by: Column to sort by (prefix with '-' for descending)
         """
         try:
-            result = await ctx.deps.fetch_tool.fetch_data(
+            result = await ctx.deps.registry.fetch_data(
                 source_name=source_name,
                 columns=columns,
                 limit=limit,
@@ -165,7 +165,7 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
         """
         try:
             # Fetch the data first
-            result = await ctx.deps.fetch_tool.fetch_data(
+            result = await ctx.deps.registry.fetch_data(
                 source_name=source_name,
                 limit=limit,
                 order_by=x_column  # Sort by x-axis for time series
@@ -217,7 +217,7 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
             limit: Limit rows fetched
         """
         try:
-            result = await ctx.deps.fetch_tool.fetch_data(
+            result = await ctx.deps.registry.fetch_data(
                 source_name=source_name, limit=limit
             )
             if not result.data:

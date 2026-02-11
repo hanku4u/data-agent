@@ -53,6 +53,18 @@ class TestSQLInjectionFix:
         # Invalid/dangerous column names should be rejected or ignored
         with pytest.raises((ValueError, KeyError, Exception)):
             await source.fetch(columns=["date; DROP TABLE test_table"])
+    
+    @pytest.mark.asyncio
+    async def test_sql_get_schema_validates_table_name(self):
+        """get_schema should validate table name before using it in queries."""
+        # Attempt to create source with malicious table name
+        with pytest.raises(ValueError, match="Invalid SQL identifier"):
+            source = SQLSource("test", {
+                "connection_string": "sqlite:///:memory:",
+                "table": "test; DROP TABLE users; --"
+            })
+            # If it didn't raise during init, it should raise during get_schema
+            await source.get_schema()
 
 
 class TestDataFrameCacheMutation:
@@ -123,6 +135,34 @@ class TestDeprecatedParameters:
         df = await source._load()
         assert df is not None
         assert len(df) > 0
+    
+    @pytest.mark.asyncio
+    async def test_csv_parse_dates_defaults_to_false(self, tmp_path):
+        """CSVSource should default parse_dates to False, not True."""
+        # Create CSV with date-like strings that shouldn't be auto-parsed
+        csv_path = tmp_path / "dates.csv"
+        csv_path.write_text("id,date_col\n1,2024-01-01\n2,2024-01-02\n")
+        
+        # Without explicit parse_dates config, should remain as string
+        source = CSVSource("test", {"path": str(csv_path)})
+        df = await source._load()
+        
+        # date_col should be string type (object or StringDtype), not datetime
+        assert not pd.api.types.is_datetime64_any_dtype(df["date_col"])
+        assert isinstance(df["date_col"].iloc[0], str)
+    
+    @pytest.mark.asyncio
+    async def test_csv_parse_dates_explicit_config(self, tmp_path):
+        """CSVSource should parse dates when explicitly configured."""
+        csv_path = tmp_path / "dates.csv"
+        csv_path.write_text("id,date_col\n1,2024-01-01\n2,2024-01-02\n")
+        
+        # With explicit parse_dates, should parse
+        source = CSVSource("test", {"path": str(csv_path), "parse_dates": ["date_col"]})
+        df = await source._load()
+        
+        # date_col should be datetime
+        assert pd.api.types.is_datetime64_any_dtype(df["date_col"])
 
 
 class TestUnusedImports:

@@ -1,5 +1,10 @@
-"""Data fetch tool for the agent."""
+"""Data fetch tool for the agent.
 
+DEPRECATED: This module is deprecated. Use SourceRegistry directly instead.
+FetchTool is kept for backward compatibility only.
+"""
+
+import warnings
 from typing import Any, Dict, List, Optional
 
 from ..sources import DataSource, CSVSource, APISource, SQLSource
@@ -23,7 +28,15 @@ class FetchTool:
     }
     
     def __init__(self) -> None:
-        """Initialize the fetch tool with an empty source registry."""
+        """Initialize the fetch tool with an empty source registry.
+        
+        DEPRECATED: Use SourceRegistry directly instead.
+        """
+        warnings.warn(
+            "FetchTool is deprecated. Use SourceRegistry directly instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
         self._sources: Dict[str, DataSource] = {}
     
     def register_source(self, config: DataSourceConfig) -> str:

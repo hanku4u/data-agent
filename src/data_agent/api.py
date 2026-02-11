@@ -120,7 +120,7 @@ async def agent_query(
 ):
     try:
         agent = app.state.agent
-        deps = AgentDeps(fetch_tool=_registry_to_fetch_tool(registry), chart_tool=chart_tool)
+        deps = AgentDeps(registry=registry, chart_tool=chart_tool)
 
         result = await agent.run(request.query, deps=deps)
 
@@ -169,6 +169,7 @@ async def create_chart(
     try:
         result = await registry.fetch_data(
             source_name=request.data_source,
+            filters=request.filters,
             limit=request.limit,
             order_by=request.x_column,
         )
@@ -192,12 +193,3 @@ async def create_chart(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
-def _registry_to_fetch_tool(registry: SourceRegistry):
-    """Create a FetchTool-compatible wrapper around a SourceRegistry for backward compat."""
-    from .tools.fetch import FetchTool
-
-    tool = FetchTool()
-    tool._sources = {name: registry.get(name) for name in registry.list()}
-    return tool

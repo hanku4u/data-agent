@@ -47,11 +47,13 @@ class CSVSource(DataSource):
         if suffix == ".json":
             df = pd.read_json(self.file_path, encoding=self.encoding)
         elif suffix in (".csv", ".tsv"):
+            # Only parse dates if explicitly configured
+            # _detect_column_info handles datetime detection, so aggressive parse_dates isn't needed
             df = pd.read_csv(
                 self.file_path,
                 delimiter=self.delimiter,
                 encoding=self.encoding,
-                parse_dates=self.parse_dates if self.parse_dates else True,
+                parse_dates=self.parse_dates if self.parse_dates is not None else False,
             )
         else:
             raise ValueError(f"Unsupported file type: {suffix}")

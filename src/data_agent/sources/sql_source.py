@@ -139,6 +139,7 @@ class SQLSource(DataSource):
     async def get_schema(self) -> DataSchema:
         """Get schema from SQL database."""
         if self.table:
+            _validate_identifier(self.table)
             inspector = inspect(self.engine)
             sql_columns = inspector.get_columns(self.table)
 

@@ -11,6 +11,19 @@ from ..exceptions import FetchError
 
 class TransformTool:
     """Provides data transformation operations for the agent."""
+    
+    # Whitelist of allowed aggregation functions
+    ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "std"}
+    
+    @staticmethod
+    def _validate_agg_func(func: str) -> None:
+        """Validate that an aggregation function is in the whitelist."""
+        if func not in TransformTool.ALLOWED_AGG_FUNCS:
+            allowed = ", ".join(sorted(TransformTool.ALLOWED_AGG_FUNCS))
+            raise ValueError(
+                f"Invalid aggregation function: '{func}'. "
+                f"Allowed functions: {allowed}"
+            )
 
     def groupby(
         self,
@@ -30,6 +43,7 @@ class TransformTool:
         Returns:
             Grouped and aggregated records.
         """
+        self._validate_agg_func(agg_func)
         df = pd.DataFrame(data)
         result = df.groupby(group_columns, as_index=False).agg({agg_column: agg_func})
         return result.to_dict("records")
@@ -54,6 +68,7 @@ class TransformTool:
         Returns:
             Resampled records.
         """
+        self._validate_agg_func(agg_func)
         df = pd.DataFrame(data)
         df[date_column] = pd.to_datetime(df[date_column])
         df = df.set_index(date_column)
@@ -79,8 +94,12 @@ class TransformTool:
         df = pd.DataFrame(data)
         col_name = f"{column}_rolling_{window}"
         df[col_name] = df[column].rolling(window=window).mean()
-        # Convert NaN to None for JSON serialization
-        return df.where(df.notna(), None).to_dict("records")
+        # Convert to dict first, then replace NaN with None only in rolling column
+        records = df.to_dict("records")
+        for record in records:
+            if pd.isna(record.get(col_name)):
+                record[col_name] = None
+        return records
 
     def aggregate(
         self,
@@ -98,6 +117,15 @@ class TransformTool:
         Returns:
             Dict with column, func, and result.
         """
+        self._validate_agg_func(func)
         df = pd.DataFrame(data)
-        result = getattr(df[column], func)()
+        raw_result = getattr(df[column], func)()
+        
+        # Cast to Python type for JSON serialization
+        # Use int for count, float for others
+        if func == "count":
+            result = int(raw_result)
+        else:
+            result = float(raw_result)
+        
         return {"column": column, "func": func, "result": result}
