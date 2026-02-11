@@ -108,3 +108,4 @@ class AgentQueryResponse(BaseModel):
     data: Optional[DataResult] = None
     chart: Optional[ChartResult] = None
     sources_used: List[str] = Field(default_factory=list)
+    tools_used: List[str] = Field(default_factory=list)
