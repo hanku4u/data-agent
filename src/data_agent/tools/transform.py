@@ -16,7 +16,7 @@ class TransformTool:
     ALLOWED_AGG_FUNCS = {"sum", "mean", "count", "min", "max", "std"}
     
     # Whitelist of allowed resample frequencies
-    ALLOWED_FREQ = {"H", "D", "W", "M", "Q", "Y"}
+    ALLOWED_FREQ = {"h", "D", "W", "ME", "QE", "YE"}
     
     @staticmethod
     def _validate_agg_func(func: str) -> None:
@@ -64,7 +64,7 @@ class TransformTool:
         Args:
             data: List of records.
             date_column: Column containing dates.
-            freq: Pandas frequency string (D, W, M, Q, Y).
+            freq: Pandas frequency string (H, D, W, ME, QE, YE).
             agg_column: Column to aggregate.
             agg_func: Aggregation function.
 

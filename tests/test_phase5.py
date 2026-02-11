@@ -208,3 +208,34 @@ class TestAggregateReturnType:
             # Should not raise TypeError
             json_str = json.dumps(result)
             assert json_str is not None
+
+
+class TestResampleFreqValidation:
+    """Test that resample frequency parameter is validated against whitelist."""
+    
+    def test_resample_invalid_freq(self, time_series_df):
+        tool = TransformTool()
+        with pytest.raises(ValueError, match="Invalid resample frequency"):
+            tool.resample(
+                data=time_series_df.to_dict("records"),
+                date_column="date",
+                freq="3MS",  # Invalid - not in whitelist
+                agg_column="value",
+                agg_func="sum",
+            )
+    
+    def test_resample_valid_frequencies(self, time_series_df):
+        """Test that all whitelisted frequencies work."""
+        tool = TransformTool()
+        data = time_series_df.to_dict("records")
+        
+        # Test that all whitelisted frequencies work
+        for freq in TransformTool.ALLOWED_FREQ:
+            result = tool.resample(
+                data=data,
+                date_column="date",
+                freq=freq,
+                agg_column="value",
+                agg_func="sum",
+            )
+            assert len(result) > 0
