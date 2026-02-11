@@ -38,6 +38,12 @@ class SQLSource(DataSource):
         self.engine = create_engine(self.connection_string)
         self._valid_columns: Optional[set[str]] = None
 
+    def validate(self) -> None:
+        """Validate that we can connect and the table exists."""
+        if not self.table and not self.default_query:
+            from ..exceptions import SourceValidationError
+            raise SourceValidationError("Either 'table' or 'query' must be configured")
+
     def _get_valid_columns(self) -> set[str]:
         """Get the set of valid column names for the table."""
         if self._valid_columns is None and self.table:

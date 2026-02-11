@@ -27,7 +27,16 @@ class CSVSource(DataSource):
         self.encoding = config.get("encoding", "utf-8")
         self.parse_dates = config.get("parse_dates", None)
         self._df_cache: Optional[pd.DataFrame] = None
-    
+
+    def validate(self) -> None:
+        """Validate that the file exists and is a supported type."""
+        if not self.file_path.exists():
+            from ..exceptions import SourceValidationError
+            raise SourceValidationError(f"File not found: {self.file_path}")
+        if self.file_path.suffix.lower() not in (".csv", ".tsv", ".json"):
+            from ..exceptions import SourceValidationError
+            raise SourceValidationError(f"Unsupported file type: {self.file_path.suffix}")
+
     async def _load(self) -> pd.DataFrame:
         """Load the file into a DataFrame with caching. Returns a copy."""
         if self._df_cache is not None:

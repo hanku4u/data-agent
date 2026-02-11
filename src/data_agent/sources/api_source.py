@@ -34,7 +34,13 @@ class APISource(DataSource):
         auth_token = config.get("auth_token")
         if auth_token:
             self.headers["Authorization"] = f"Bearer {auth_token}"
-    
+
+    def validate(self) -> None:
+        """Validate API source configuration."""
+        if not self.url:
+            from ..exceptions import SourceValidationError
+            raise SourceValidationError("API source requires 'url' in config")
+
     def _extract_data(self, response_json: Any) -> List[Dict[str, Any]]:
         """Extract data array from API response using data_path."""
         if self.data_path is None:

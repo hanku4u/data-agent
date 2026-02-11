@@ -26,6 +26,10 @@ class DataSource(ABC):
         self.name = name
         self.config = config
     
+    def validate(self) -> None:
+        """Validate source configuration. Override in subclasses for specific checks."""
+        pass
+
     @abstractmethod
     async def fetch(
         self,
