@@ -41,7 +41,13 @@ class ChartEngine:
         """
         # Work on a copy to avoid mutating the input
         df = df.copy()
-        
+
+        # Validate columns exist
+        missing = [c for c in [x_column] + y_columns if c not in df.columns]
+        if missing:
+            from ..exceptions import ChartError
+            raise ChartError(f"Columns not found in data: {missing}")
+
         # Auto-detect and parse datetime x-axis
         if x_column in df.columns:
             try:

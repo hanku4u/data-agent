@@ -2,18 +2,20 @@
 
 from __future__ import annotations
 
+import asyncio
 from contextlib import asynccontextmanager
 from typing import List, Optional
 
 import yaml
 from pathlib import Path
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import FastAPI, HTTPException, Depends
 
 from .agent import create_agent, AgentDeps
-from .config import get_config
-from .tools.fetch import FetchTool
+from .config import AppConfig, get_config
+from .registry import SourceRegistry
+from .dependencies import get_registry, get_chart_tool, get_app_config
 from .tools.chart import ChartTool
+from .log import setup_logging, get_logger
 from .models import (
     AgentQueryRequest,
     AgentQueryResponse,
@@ -23,114 +25,120 @@ from .models import (
     ChartResult,
 )
 
-# Global state
-fetch_tool = FetchTool()
-chart_tool = ChartTool()
-config = get_config()
+logger = get_logger(__name__)
 
 
-def load_sources_from_yaml(path: str) -> None:
+def load_sources_from_yaml(registry: SourceRegistry, path: str) -> None:
     """Load data sources from a YAML configuration file."""
     config_path = Path(path)
     if not config_path.exists():
         return
-    
+
     with open(config_path) as f:
         sources_config = yaml.safe_load(f)
-    
+
     if not sources_config or "sources" not in sources_config:
         return
-    
+
     for name, source_def in sources_config["sources"].items():
         try:
             source_config = DataSourceConfig(
                 name=name,
                 type=source_def["type"],
                 config=source_def.get("config", {}),
-                description=source_def.get("description", "")
+                description=source_def.get("description", ""),
             )
-            fetch_tool.register_source(source_config)
-            print(f"  ✅ Loaded source: {name} ({source_def['type']})")
+            registry.register(source_config)
+            logger.info("source_loaded", source_name=name, source_type=source_def["type"])
         except Exception as e:
-            print(f"  ⚠️  Failed to load source '{name}': {e}")
+            logger.warning("source_load_failed", source_name=name, error=str(e))
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Application lifespan: load sources on startup."""
-    print("🚀 Starting Data Agent...")
-    print(f"📡 LLM Provider: {config.llm.provider}")
-    
-    # Load sources from YAML config
-    print(f"📂 Loading sources from {config.sources_config_path}...")
-    load_sources_from_yaml(config.sources_config_path)
-    
-    loaded = fetch_tool.list_sources()
-    print(f"📊 {len(loaded)} data source(s) loaded: {', '.join(loaded) or 'none'}")
-    print("✅ Data Agent ready!")
-    
+    """Application lifespan: initialize state on startup."""
+    config = get_config()
+    setup_logging(level=config.log_level, json_output=config.log_json)
+
+    registry = SourceRegistry()
+    chart_tool = ChartTool()
+
+    # Store on app.state
+    app.state.config = config
+    app.state.registry = registry
+    app.state.chart_tool = chart_tool
+
+    # Create agent once at startup
+    app.state.agent = create_agent(config.llm)
+
+    logger.info("startup", llm_provider=config.llm.provider)
+
+    # Load sources from YAML
+    load_sources_from_yaml(registry, config.sources_config_path)
+
+    loaded = registry.list()
+    logger.info("sources_loaded", count=len(loaded), names=loaded)
+
     yield
-    
-    print("👋 Shutting down Data Agent...")
+
+    logger.info("shutdown")
 
 
-# Create FastAPI app
 app = FastAPI(
     title="Data Agent API",
     description="AI-powered data fetching and chart generation agent",
     version="0.1.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 
 @app.get("/health")
-async def health_check():
-    """Health check endpoint."""
+async def health_check(
+    registry: SourceRegistry = Depends(get_registry),
+    config: AppConfig = Depends(get_app_config),
+):
     return {
         "status": "healthy",
         "version": "0.1.0",
         "llm_provider": config.llm.provider,
-        "data_sources": fetch_tool.list_sources()
+        "data_sources": registry.list(),
     }
 
 
-# --- Agent Endpoints ---
-
 @app.post("/agent/query", response_model=AgentQueryResponse)
-async def agent_query(request: AgentQueryRequest):
-    """
-    Query the AI agent with natural language.
-    
-    The agent will use its tools to fetch data and create charts
-    based on your query.
-    """
+async def agent_query(
+    request: AgentQueryRequest,
+    registry: SourceRegistry = Depends(get_registry),
+    chart_tool: ChartTool = Depends(get_chart_tool),
+    config: AppConfig = Depends(get_app_config),
+):
     try:
-        agent = create_agent(config.llm)
-        deps = AgentDeps(fetch_tool=fetch_tool, chart_tool=chart_tool)
-        
+        agent = app.state.agent
+        deps = AgentDeps(fetch_tool=_registry_to_fetch_tool(registry), chart_tool=chart_tool)
+
         result = await agent.run(request.query, deps=deps)
-        
+
         return AgentQueryResponse(
             answer=result.data,
-            sources_used=fetch_tool.list_sources()
+            sources_used=registry.list(),
         )
     except Exception as e:
+        logger.error("agent_query_error", error=str(e))
         raise HTTPException(status_code=500, detail=str(e))
 
 
-# --- Data Source Endpoints ---
-
 @app.get("/data-sources", response_model=List[str])
-async def list_data_sources():
-    """List all registered data sources."""
-    return fetch_tool.list_sources()
+async def list_data_sources(registry: SourceRegistry = Depends(get_registry)):
+    return registry.list()
 
 
 @app.get("/data-sources/{name}/schema")
-async def get_source_schema(name: str):
-    """Get schema information for a data source."""
+async def get_source_schema(
+    name: str, registry: SourceRegistry = Depends(get_registry)
+):
     try:
-        schema = await fetch_tool.get_schema(name)
+        schema = await asyncio.to_thread(lambda: None)  # placeholder for blocking I/O
+        schema = await registry.get_schema(name)
         return schema.model_dump()
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
@@ -139,51 +147,60 @@ async def get_source_schema(name: str):
 
 
 @app.post("/data-sources", response_model=str)
-async def register_data_source(config: DataSourceConfig):
-    """Register a new data source."""
+async def register_data_source(
+    config: DataSourceConfig, registry: SourceRegistry = Depends(get_registry)
+):
     try:
-        return fetch_tool.register_source(config)
+        return registry.register(config)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
 
 @app.delete("/data-sources/{name}")
-async def remove_data_source(name: str):
-    """Remove a registered data source."""
-    return {"message": fetch_tool.unregister_source(name)}
+async def remove_data_source(
+    name: str, registry: SourceRegistry = Depends(get_registry)
+):
+    return {"message": registry.unregister(name)}
 
-
-# --- Direct Chart Endpoint ---
 
 @app.post("/agent/chart")
-async def create_chart(request: ChartRequest):
-    """
-    Generate a chart directly from a data source.
-    
-    Bypasses the AI agent for direct chart generation.
-    """
+async def create_chart(
+    request: ChartRequest,
+    registry: SourceRegistry = Depends(get_registry),
+    chart_tool: ChartTool = Depends(get_chart_tool),
+):
     try:
-        result = await fetch_tool.fetch_data(
+        result = await registry.fetch_data(
             source_name=request.data_source,
             limit=request.limit,
-            order_by=request.x_column
+            order_by=request.x_column,
         )
-        
+
         if not result.data:
             raise HTTPException(status_code=404, detail="No data found")
-        
-        chart_result = chart_tool.create_chart(
+
+        chart_result = await asyncio.to_thread(
+            chart_tool.create_chart,
             data=result.data,
             chart_type=request.chart_type.value,
             x_column=request.x_column,
             y_columns=request.y_columns,
             title=request.title,
             x_label=request.x_label,
-            y_label=request.y_label
+            y_label=request.y_label,
         )
-        
+
         return chart_result.model_dump()
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _registry_to_fetch_tool(registry: SourceRegistry):
+    """Create a FetchTool-compatible wrapper around a SourceRegistry for backward compat."""
+    from .tools.fetch import FetchTool
+
+    tool = FetchTool()
+    tool._sources = {name: registry.get(name) for name in registry.list()}
+    return tool
