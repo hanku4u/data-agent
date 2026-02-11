@@ -1,175 +1,139 @@
-# Data Agent 📊
+# Data Agent 🤖📊
 
-A pluggable AI agent built with **Pydantic AI** that fetches data from various sources and generates charts. Exposed via **FastAPI** for easy integration.
+Pluggable AI agent for data fetching, transformation, and chart generation. Built with [Pydantic AI](https://github.com/pydantic/pydantic-ai), FastAPI, and Plotly.
+
+[![CI](https://github.com/hanku4u/data-agent/actions/workflows/ci.yml/badge.svg)](https://github.com/hanku4u/data-agent/actions/workflows/ci.yml)
 
 ## Features
 
-- 🤖 **Pydantic AI Agent** — Natural language data queries with pluggable LLM (OpenAI, Anthropic, Ollama)
-- 🔌 **Data Source Abstraction** — Plug in CSV, JSON, REST APIs, SQL databases, and more
-- 📈 **Chart Generation** — Line, bar, scatter, area charts with automatic time-series detection
-- 🚀 **FastAPI Endpoint** — Query the agent via REST API
-- 🧩 **Extensible** — Add new data sources and chart types easily
-
-## Architecture
-
-```
-FastAPI → Pydantic AI Agent → Tools
-                                ├── Fetch Tool (Data Source Abstraction)
-                                │     ├── CSV/JSON files
-                                │     ├── REST APIs
-                                │     ├── SQL databases
-                                │     └── (extensible)
-                                └── Chart Tool (Plotly)
-                                      ├── Line chart
-                                      ├── Bar chart
-                                      ├── Scatter plot
-                                      └── Area chart
-```
+- **Multi-source data fetching** — CSV, JSON, SQL databases, REST APIs
+- **AI-powered queries** — Natural language data exploration via Pydantic AI agents
+- **Chart generation** — Line, bar, scatter, and area charts with Plotly
+- **Data transformations** — GroupBy, resample, rolling averages, aggregations
+- **Structured logging** — JSON-formatted logs with structlog
+- **Error handling** — Custom exception hierarchy with proper HTTP status mapping
+- **Source validation** — Validates data source configs before registration
+- **SQL injection protection** — Parameterized queries and column whitelisting
 
 ## Quick Start
 
 ```bash
-# Clone
-git clone https://github.com/hanku4u/data-agent.git
-cd data-agent
-
 # Install
-pip install -e .
+pip install -e ".[dev]"
 
-# Configure
+# Configure (copy and edit)
 cp .env.example .env
-# Edit .env with your LLM provider settings
 
-# Run
+# Run the API server
 uvicorn data_agent.api:app --reload
-```
-
-## API Endpoints
-
-### Query the Agent
-```bash
-POST /agent/query
-{
-  "query": "Show me a line chart of daily temperatures from weather.csv",
-  "data_source": "weather_csv"
-}
-```
-
-### Generate a Chart
-```bash
-POST /agent/chart
-{
-  "data_source": "weather_csv",
-  "chart_type": "line",
-  "x_column": "date",
-  "y_columns": ["temperature"],
-  "title": "Daily Temperatures"
-}
-```
-
-### List Data Sources
-```bash
-GET /data-sources
-```
-
-### Register Data Source
-```bash
-POST /data-sources
-{
-  "name": "weather_csv",
-  "type": "csv",
-  "config": {
-    "path": "/path/to/weather.csv"
-  }
-}
 ```
 
 ## Configuration
 
-### LLM Providers
+Set environment variables or use a `.env` file:
 
 ```env
-# OpenAI
-LLM_PROVIDER=openai
-OPENAI_API_KEY=sk-...
-
-# Anthropic
-LLM_PROVIDER=anthropic
-ANTHROPIC_API_KEY=sk-ant-...
-
-# Ollama (local)
 LLM_PROVIDER=ollama
-OLLAMA_BASE_URL=http://192.168.4.210:11434
+OLLAMA_BASE_URL=http://localhost:11434
 OLLAMA_MODEL=qwen3:8b
+SOURCES_CONFIG=./sources.yaml
 ```
 
-### Data Sources
+## API Endpoints
 
-Data sources are configured via the API or a `sources.yaml` file:
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/agent/query` | Query the AI agent |
+| `GET` | `/data-sources` | List registered sources |
+| `POST` | `/data-sources` | Register a new source |
+| `GET` | `/data-sources/{name}/schema` | Get source schema |
+| `DELETE` | `/data-sources/{name}` | Remove a source |
+| `POST` | `/agent/chart` | Generate a chart directly |
+
+## Usage Examples
+
+### Register a CSV source
+
+```bash
+curl -X POST http://localhost:8000/data-sources \
+  -H "Content-Type: application/json" \
+  -d '{"name": "metrics", "type": "csv", "config": {"path": "./data/sample_metrics.csv"}}'
+```
+
+### Query the agent
+
+```bash
+curl -X POST http://localhost:8000/agent/query \
+  -H "Content-Type: application/json" \
+  -d '{"query": "Show me a line chart of cpu_usage over time from the metrics source"}'
+```
+
+### YAML source configuration
+
+Define sources in `sources.yaml`:
 
 ```yaml
 sources:
-  weather_csv:
+  sales:
     type: csv
     config:
-      path: ./data/weather.csv
+      path: ./data/sales.csv
+    description: Monthly sales data
 
-  sales_api:
-    type: rest_api
-    config:
-      url: https://api.example.com/sales
-      headers:
-        Authorization: "Bearer ${API_TOKEN}"
-
-  metrics_db:
+  analytics_db:
     type: sql
     config:
-      connection_string: "sqlite:///./data/metrics.db"
-      table: "metrics"
+      connection_string: sqlite:///./data/analytics.db
+      table: events
+    description: Analytics events
 ```
 
-## Project Structure
+## Data Transformations
+
+The agent can perform data transformations before charting:
+
+- **groupby** — Group by columns with sum/mean/count/min/max
+- **resample** — Resample time-series (D/W/M/Q/Y frequencies)
+- **rolling_average** — Moving averages with configurable window
+- **aggregate** — Single-value computations (sum, mean, std, etc.)
+
+## Architecture
 
 ```
-data-agent/
-├── src/data_agent/
-│   ├── __init__.py
-│   ├── agent.py          # Pydantic AI agent definition
-│   ├── api.py            # FastAPI application
-│   ├── config.py         # Configuration management
-│   ├── models.py         # Pydantic models (request/response)
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── fetch.py      # Data fetch tool
-│   │   └── chart.py      # Chart generation tool
-│   ├── sources/
-│   │   ├── __init__.py
-│   │   ├── base.py       # DataSource abstract base
-│   │   ├── csv_source.py # CSV/JSON file source
-│   │   ├── api_source.py # REST API source
-│   │   └── sql_source.py # SQL database source
-│   └── charts/
-│       ├── __init__.py
-│       └── engine.py     # Plotly chart engine
-├── tests/
-├── data/                 # Sample data files
-├── pyproject.toml
-├── .env.example
-└── README.md
+src/data_agent/
+├── agent.py          # Pydantic AI agent with tools
+├── api.py            # FastAPI application
+├── config.py         # Pydantic Settings configuration
+├── dependencies.py   # FastAPI dependency injection
+├── exceptions.py     # Custom exception hierarchy
+├── log.py            # Structured logging (structlog)
+├── middleware.py      # Error handler & request logging
+├── models.py         # Pydantic request/response models
+├── registry.py       # Source registry
+├── charts/
+│   └── engine.py     # Plotly chart generation
+├── sources/
+│   ├── base.py       # Abstract DataSource
+│   ├── csv_source.py # CSV/JSON file source
+│   ├── sql_source.py # SQL database source
+│   └── api_source.py # REST API source
+└── tools/
+    ├── fetch.py      # Data fetch tool
+    ├── chart.py      # Chart generation tool
+    └── transform.py  # Data transformation tool
 ```
 
-## Tech Stack
+## Testing
 
-- **[Pydantic AI](https://ai.pydantic.dev/)** — Agent framework with type safety
-- **[FastAPI](https://fastapi.tiangolo.com/)** — API layer
-- **[Plotly](https://plotly.com/python/)** — Chart generation
-- **[Pandas](https://pandas.pydata.org/)** — Data manipulation
-- **[SQLAlchemy](https://www.sqlalchemy.org/)** — SQL database support
+```bash
+# Run all tests
+python -m pytest tests/ -v
+
+# Run specific phase
+python -m pytest tests/test_phase0.py -v
+```
 
 ## License
 
 MIT
-
-## Author
-
-Created by [@hanku4u](https://github.com/hanku4u) with AI assistance from RockLobster 🦞
