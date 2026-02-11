@@ -10,6 +10,7 @@ from pydantic_ai import Agent, RunContext
 from .config import LLMConfig, get_config
 from .tools.fetch import FetchTool
 from .tools.chart import ChartTool
+from .tools.transform import TransformTool
 from .models import DataResult, DataSchema, ChartResult, ChartType
 
 
@@ -18,6 +19,11 @@ class AgentDeps:
     """Dependencies injected into the agent at runtime."""
     fetch_tool: FetchTool
     chart_tool: ChartTool
+    transform_tool: TransformTool = None
+
+    def __post_init__(self):
+        if self.transform_tool is None:
+            self.transform_tool = TransformTool()
 
 
 def get_model_string(llm_config: LLMConfig) -> str:
@@ -185,6 +191,70 @@ def create_agent(llm_config: Optional[LLMConfig] = None) -> Agent[AgentDeps, str
         except Exception as e:
             return f"Error creating chart: {e}"
     
+    @agent.tool
+    async def transform_data(
+        ctx: RunContext[AgentDeps],
+        source_name: str,
+        operation: str,
+        column: str,
+        group_columns: Optional[List[str]] = None,
+        window: int = 7,
+        freq: str = "W",
+        agg_func: str = "sum",
+        limit: Optional[int] = None,
+    ) -> str:
+        """
+        Transform data using groupby, rolling average, resample, or aggregate.
+
+        Args:
+            source_name: Name of the data source
+            operation: One of 'groupby', 'rolling_average', 'resample', 'aggregate'
+            column: Column to transform/aggregate
+            group_columns: Columns to group by (for groupby operation)
+            window: Window size (for rolling_average)
+            freq: Frequency string like 'D', 'W', 'M' (for resample)
+            agg_func: Aggregation function: sum, mean, count, min, max
+            limit: Limit rows fetched
+        """
+        try:
+            result = await ctx.deps.fetch_tool.fetch_data(
+                source_name=source_name, limit=limit
+            )
+            if not result.data:
+                return f"No data in '{source_name}'"
+
+            tool = ctx.deps.transform_tool
+
+            if operation == "groupby":
+                if not group_columns:
+                    return "groupby requires group_columns"
+                transformed = tool.groupby(result.data, group_columns, column, agg_func)
+                rows = "\n".join(str(r) for r in transformed[:20])
+                return f"Grouped by {group_columns}, {agg_func}({column}):\n{rows}"
+
+            elif operation == "rolling_average":
+                transformed = tool.rolling_average(result.data, column, window)
+                rows = "\n".join(str(r) for r in transformed[:20])
+                return f"Rolling average (window={window}) of {column}:\n{rows}"
+
+            elif operation == "resample":
+                transformed = tool.resample(
+                    result.data, group_columns[0] if group_columns else "date",
+                    freq, column, agg_func
+                )
+                rows = "\n".join(str(r) for r in transformed[:20])
+                return f"Resampled to {freq}, {agg_func}({column}):\n{rows}"
+
+            elif operation == "aggregate":
+                agg_result = tool.aggregate(result.data, column, agg_func)
+                return f"{agg_func}({column}) = {agg_result['result']}"
+
+            else:
+                return f"Unknown operation: {operation}. Use groupby, rolling_average, resample, or aggregate."
+
+        except Exception as e:
+            return f"Transform error: {e}"
+
     return agent
 
 
@@ -210,4 +280,12 @@ Chart types available:
 - bar: Best for comparisons and categories
 - scatter: Best for correlations and distributions
 - area: Best for cumulative or stacked data
+
+Data transformations available (via transform_data):
+- groupby: Group data by columns and aggregate (sum, mean, count, min, max)
+- rolling_average: Calculate rolling averages with configurable window size
+- resample: Resample time-series to different frequencies (D, W, M, Q, Y)
+- aggregate: Compute a single aggregate value (sum, mean, count, min, max, std)
+
+Use transformations to prepare data before charting or to answer analytical questions.
 """
