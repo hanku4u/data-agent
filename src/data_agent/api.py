@@ -16,6 +16,8 @@ from .registry import SourceRegistry
 from .dependencies import get_registry, get_chart_tool, get_app_config
 from .tools.chart import ChartTool
 from .log import setup_logging, get_logger
+from .middleware import RequestLoggingMiddleware, data_agent_exception_handler
+from .exceptions import DataAgentError, SourceNotFoundError, FetchError
 from .models import (
     AgentQueryRequest,
     AgentQueryResponse,
@@ -91,6 +93,10 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Register middleware and exception handlers
+app.add_middleware(RequestLoggingMiddleware)
+app.add_exception_handler(DataAgentError, data_agent_exception_handler)
+
 
 @app.get("/health")
 async def health_check(
@@ -136,24 +142,15 @@ async def list_data_sources(registry: SourceRegistry = Depends(get_registry)):
 async def get_source_schema(
     name: str, registry: SourceRegistry = Depends(get_registry)
 ):
-    try:
-        schema = await asyncio.to_thread(lambda: None)  # placeholder for blocking I/O
-        schema = await registry.get_schema(name)
-        return schema.model_dump()
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    schema = await registry.get_schema(name)
+    return schema.model_dump()
 
 
 @app.post("/data-sources", response_model=str)
 async def register_data_source(
     config: DataSourceConfig, registry: SourceRegistry = Depends(get_registry)
 ):
-    try:
-        return registry.register(config)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    return registry.register(config)
 
 
 @app.delete("/data-sources/{name}")
