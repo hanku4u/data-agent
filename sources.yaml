@@ -1,0 +1,33 @@
+# Data source configurations
+
+sources:
+  # Sample server metrics (included with project)
+  server_metrics:
+    type: csv
+    description: "Sample server performance metrics (30 days)"
+    config:
+      path: ./data/sample_metrics.csv
+
+  # Uncomment to add your own sources:
+  
+  # my_csv:
+  #   type: csv
+  #   description: "My CSV data"
+  #   config:
+  #     path: ./data/my_file.csv
+  
+  # my_api:
+  #   type: rest_api
+  #   description: "External API data"
+  #   config:
+  #     url: https://api.example.com/data
+  #     data_path: results
+  #     headers:
+  #       Authorization: "Bearer YOUR_TOKEN"
+  
+  # my_database:
+  #   type: sql
+  #   description: "My database"
+  #   config:
+  #     connection_string: "sqlite:///./data/my_db.sqlite"
+  #     table: my_table
